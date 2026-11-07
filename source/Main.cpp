@@ -1,20 +1,3 @@
-// TXDP for GTA III (v1.0 EN, PC) - port of San Andreas' IDE "txdp" section.
-//
-// IDE syntax (same as SA):
-//     txdp
-//     ChildTxd, ParentTxd
-//     end
-//
-// If a texture is not found in the child's TXD while a model is built, it is
-// looked up in the parent (and in the parent's parent, up to 8 levels). The
-// parent is streamed in together with the child and the child waits for it.
-//
-// Compatible with SkyGfx: it hooks the same call (0x5AAE1B) for its
-// "generic.txd fallback"; we chain to whatever is installed there.
-//
-// Build: Visual Studio 2022, plugin-sdk, Win32, define GTA3 + PLUGIN_SGV_10EN,
-// output extension .asi. Settings: txdp.ini, log: txdp.log (both next to the .asi).
-
 #include "plugin.h"
 #include "CTxdStore.h"
 #include "CStreaming.h"
@@ -64,7 +47,8 @@ static std::unordered_map<int, int> g_parent;
 
 // ---- log & settings --------------------------------------------------------
 // Both files live next to the plugin (.asi) and share its name:
-//   txdp.asi -> txdp.ini (settings), txdp.log (log, only if Log=1 in the ini).
+//   txdp.asi -> txdp.ini (settings, created automatically if missing),
+//               txdp.log (log, only if Log=1 in the ini).
 static char g_logPath[MAX_PATH] = "";
 static bool g_logEnabled = false;
 
@@ -83,6 +67,21 @@ static void InitSettings() {
     char iniPath[MAX_PATH];
     snprintf(iniPath, sizeof(iniPath), "%s.ini", base);
     snprintf(g_logPath, sizeof(g_logPath), "%s.log", base);
+
+    // Create the ini with defaults if it does not exist yet (silently skipped if the
+    // folder is not writable; the defaults below are used then).
+    if (GetFileAttributesA(iniPath) == INVALID_FILE_ATTRIBUTES) {
+        if (FILE* f = fopen(iniPath, "w")) {
+            fputs("[Main]\n"
+                "; 1 = write txdp.log next to the plugin (for diagnostics), 0 = no log at all\n"
+                "Log=0\n", f);
+            fclose(f);
+        }
+    }
+    else if (GetPrivateProfileIntA("Main", "Log", -1, iniPath) == -1) {
+        // ini exists but has no Log key (e.g. edited by hand): add it, keep the rest
+        WritePrivateProfileStringA("Main", "Log", "0", iniPath);
+    }
 
     g_logEnabled = GetPrivateProfileIntA("Main", "Log", 0, iniPath) != 0;
     if (g_logEnabled) remove(g_logPath); // fresh log on every start
